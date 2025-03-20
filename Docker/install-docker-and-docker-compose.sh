@@ -24,12 +24,17 @@ latest_version=$(curl -s https://api.github.com/repos/docker/compose/releases/la
 curl -SL https://github.com/docker/compose/releases/download/${latest_version}/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose
 chmod +x ~/.docker/cli-plugins/docker-compose
 
+# Clear the terminal
+clear
 # Verify the installation
+echo "================================"
 echo "|Verifying the installation... |"
 echo "================================"
 echo "|        Docker version        |"
+echo "--------------------------------"
 docker --version
 echo "================================"
 echo "|    Docker Compose version    |"
+echo "--------------------------------"
 docker compose version
 echo "================================"
