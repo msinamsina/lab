@@ -62,7 +62,11 @@ start_tunnel() {
 
     
     # Start the SSH tunnel with dynamic port forwarding (-D) in the background
-    ssh -f -N -D $socks_port $username@$host -p $ssh_port
+
+    SSH_CMD="ssh -f -N -D $socks_port $username@$host -p $ssh_port"
+    echo "Running command: $SSH_CMD"
+    $SSH_CMD
+
     if [ $? -eq 0 ]; then
         echo "SSH tunnel started successfully."
         echo "User: $username" > /tmp/msa_ssh_tunnel
@@ -74,7 +78,7 @@ start_tunnel() {
     fi
 
     # Get the PID of the SSH process
-    ssh_pid=$(pgrep -f "ssh -f -N -D $socks_port $username@$host -p $ssh_port")
+    ssh_pid=$(pgrep -f "$SSH_CMD")
     if [ -n "$ssh_pid" ]; then
         echo "SSH tunnel PID: $ssh_pid"
     else
@@ -145,7 +149,7 @@ manage_tunnels() {
             if [[ "$tunnel_num" =~ ^[0-9]+$ ]] && [ "$tunnel_num" -ge 1 ] && [ "$tunnel_num" -lt "$counter" ]; then
                 kill_pid=${tunnel_pids[$tunnel_num]}
                 echo -e "Terminating: \033[1;33m${tunnel_details[$tunnel_num]}\033[0m"
-                kill $kill_pid
+                sudo kill $kill_pid
                 if [ $? -eq 0 ]; then
                     echo -e "\033[1;32mTunnel with PID $kill_pid has been terminated.\033[0m"
                 else
@@ -160,7 +164,7 @@ manage_tunnels() {
             for i in $(seq 1 $((counter-1))); do
                 pid=${tunnel_pids[$i]}
                 echo -e "Terminating: \033[1;33m${tunnel_details[$i]}\033[0m"
-                kill $pid
+                sudo kill $pid
                 if [ $? -eq 0 ]; then
                     echo -e "\033[1;32mTunnel with PID $pid has been terminated.\033[0m"
                 else
