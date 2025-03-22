@@ -441,22 +441,7 @@ EOF
     # Ask if user wants to start redsocks
     read -p "Do you want to start redsocks as a service? (y/n): " start_choice
     if [[ "$start_choice" == "y" || "$start_choice" == "Y" ]]; then
-        # Create a systemd service file for redsocks
-        sudo bash -c "cat > /etc/systemd/system/redsocks.service << EOF
-[Unit]
-Description=Redsocks transparent SOCKS proxy redirector
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/redsocks -c /tmp/redsocks.conf
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF"
-        
+  
         # First try using service command
         if command -v service >/dev/null 2>&1; then
             echo "Using service command to manage redsocks..."
@@ -840,6 +825,8 @@ view_redsocks_logs() {
             ;;
     esac
 }
+
+
 
 # Function to show IP addresses
 show_ip_addresses() {
