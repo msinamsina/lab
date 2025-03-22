@@ -62,8 +62,7 @@ start_tunnel() {
 
     
     # Start the SSH tunnel with dynamic port forwarding (-D) in the background
-
-    SSH_CMD="ssh -f -N -D $socks_port $username@$host -p $ssh_port"
+    SSH_CMD="ssh -f -N -D $socks_port -o ConnectTimeout=10 -o ServerAliveInterval=60 -o TCPKeepAlive=yes -o ConnectionAttempts=3 $username@$host -p $ssh_port 1>> ./msa_ssh_tunnel.log"
     echo "Running command: $SSH_CMD"
     $SSH_CMD
 
@@ -619,7 +618,12 @@ check_iptables_status() {
     
     # Display the REDSOCKS chain rules
     echo -e "\033[1;36mREDSOCKS Chain Configuration:\033[0m"
-    sudo iptables -t nat -L REDSOCKS -n --line-numbers
+    sudo iptables -t nat -L REDSOCKS -n 
+    echo -e "\033[1;36mREDSOCKS related iptables OUTPUT rules:\033[0m"
+    sudo iptables -t nat -L OUTPUT -n | grep REDSOCKS
+
+
+
     
     # Check if redsocks process is running
     if pgrep redsocks >/dev/null; then
