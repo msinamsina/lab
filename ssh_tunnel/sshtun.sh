@@ -162,7 +162,7 @@ start_tunnel() {
 
     
     # Start the SSH tunnel with dynamic port forwarding (-D) in the background
-    SSH_CMD="ssh -f -N -D $socks_port -o ConnectTimeout=10 -o ServerAliveInterval=60 -o TCPKeepAlive=yes -o ConnectionAttempts=3 $username@$host -p $ssh_port 1>> ./msa_ssh_tunnel.log"
+    SSH_CMD="ssh -f -N -D $socks_port -o ConnectTimeout=10 -o ServerAliveInterval=60 -o TCPKeepAlive=yes -o ConnectionAttempts=3 $username@$host -p $ssh_port 2>> ./msa_ssh_tunnel.log"
     echo "Running command: $SSH_CMD"
     $SSH_CMD
 
@@ -436,7 +436,6 @@ EOF
     echo "sudo iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDSOCKS"
     echo "sudo iptables -t nat -A OUTPUT -p tcp --dport 443 -j REDSOCKS"
     echo ""
-    
     echo "To stop redirection: sudo iptables -t nat -F OUTPUT"
     
     # Ask if user wants to start redsocks
@@ -842,6 +841,125 @@ view_redsocks_logs() {
     esac
 }
 
+# Function to show IP addresses
+show_ip_addresses() {
+    display_logo
+    echo -e "\033[1;36mIP Address Information\033[0m"
+    echo -e "\033[1;33m--------------------\033[0m"
+    
+    # Show hostname
+    echo -e "\033[1;34mHostname:\033[0m $(hostname)"
+    
+    # Show local IP addresses
+    echo -e "\033[1;34mLocal IP Addresses:\033[0m"
+    if command -v ip >/dev/null 2>&1; then
+        ip -4 addr show | grep inet | grep -v 127.0.0.1 | awk '{print "  - " $2}' | cut -d/ -f1
+    elif command -v hostname >/dev/null 2>&1 && hostname -I >/dev/null 2>&1; then
+        for ip in $(hostname -I); do
+            echo "  - $ip"
+        done
+    else
+        echo "  - Could not determine local IP address"
+    fi
+    
+    # Show public IP address
+    echo -e "\033[1;34mPublic IP Address:\033[0m"
+    if command -v curl >/dev/null 2>&1; then
+        public_ip=$(curl -s ifconfig.me || curl -s ipinfo.io/ip || curl -s icanhazip.com)
+        if [ -n "$public_ip" ]; then
+            echo "  - $public_ip"
+        else
+            echo "  - Could not determine public IP address"
+        fi
+    elif command -v wget >/dev/null 2>&1; then
+        public_ip=$(wget -qO- ifconfig.me || wget -qO- ipinfo.io/ip || wget -qO- icanhazip.com)
+        if [ -n "$public_ip" ]; then
+            echo "  - $public_ip"
+        else
+            echo "  - Could not determine public IP address"
+        fi
+    else
+        echo "  - Could not determine public IP address (curl or wget required)"
+    fi
+    
+    # Show if proxy is active
+    echo -e "\033[1;34mProxy Status:\033[0m"
+    if sudo iptables -t nat -L REDSOCKS -n >/dev/null 2>&1 && pgrep redsocks >/dev/null; then
+        echo -e "  - \033[1;32mProxy redirection is ACTIVE\033[0m"
+    else
+        echo -e "  - \033[1;31mProxy redirection is NOT ACTIVE\033[0m"
+    fi
+}
+
+# Function to display the menu
+display_menu() {
+    display_logo
+    echo -e "  \033[1;34m1.\033[0m Install Redsocks"
+    echo -e "  \033[1;33m2.\033[0m Generate/Copy SSH Key"
+    echo -e "  \033[1;32m3.\033[0m Start SSH Tunnel"
+    echo -e "  \033[1;31m4.\033[0m Manage SSH Tunnels"
+    echo -e "  \033[1;35m5.\033[0m Configure Redsocks"
+    echo -e "  \033[1;36m6.\033[0m View Redsocks Logs"
+    echo -e "  \033[1;32m7.\033[0m Set iptables Rules"
+    echo -e "  \033[1;31m8.\033[0m Unset iptables Rules"
+    echo -e "  \033[1;36m9.\033[0m Check iptables Status"
+    echo -e "  \033[1;34m10.\033[0m Show IP Addresses"
+    echo -e "  \033[1;33mq.\033[0m Exit"
+    echo ""
+    echo -e "  \033[1;37m--------------------------------\033[0m"
+}
+
+# Main loop
+while true; do
+    clear
+    display_menu
+    read -p "Please choose an option: " choice
+    clear
+    display_logo
+    case $choice in
+        1)
+            install_redsocks
+            ;;
+        2)
+            generate_ssh_key
+            ;;
+        3)
+            start_tunnel
+            ;;
+        4)
+            manage_tunnels
+            ;;
+        5)
+            configure_redsocks
+            ;;
+        6)
+            view_redsocks_logs
+            ;;
+        7)
+            set_iptables_rules
+            ;;
+        8)
+            unset_iptables_rules
+            ;;
+        9)
+            check_iptables_status
+            ;;
+        10)
+            show_ip_addresses
+            ;;
+        q|Q)
+            clear
+            echo -e "\033[1;32mThank you for using MSA SSH Tunnel Manager!\033[0m"
+            echo -e "\033[1;36mHave a great day!\033[0m"
+            echo -e "\033[1;33m================================\033[0m"
+            exit 0
+            ;;
+        *)
+            echo "Invalid option, please try again."
+            ;;
+    esac
+    read -p "Press [Enter] key to continue..."
+done
 # Function to display the menu
 display_menu() {
     display_logo
