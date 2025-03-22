@@ -22,7 +22,107 @@ display_logo() {
     echo ""
 }
 
-
+# Function to generate and copy SSH key
+generate_ssh_key() {
+    echo "Checking for existing SSH keys..."
+    
+    # Check if SSH keys already exist
+    if [ -f ~/.ssh/id_ed25519 ] || [ -f ~/.ssh/id_rsa ]; then
+        echo -e "\033[1;32mSSH key already exists!\033[0m"
+        key_exists=true
+    else
+        echo -e "\033[1;33mNo SSH key found. Generating new key...\033[0m"
+        key_exists=false
+        
+        # Ask user for key type
+        echo -e "\033[1;36mSelect key type:\033[0m"
+        echo -e "  \033[1;32m1)\033[0m Ed25519 (recommended, more secure)"
+        echo -e "  \033[1;32m2)\033[0m RSA (more compatible with older servers)"
+        read -p "Select an option (1-2): " key_type
+        
+        case $key_type in
+            1)
+                key_algorithm="ed25519"
+                ;;
+            2)
+                key_algorithm="rsa"
+                key_bits=4096
+                ;;
+            *)
+                echo -e "\033[1;31mInvalid option. Using Ed25519 as default.\033[0m"
+                key_algorithm="ed25519"
+                ;;
+        esac
+        
+        # Ask user for email or comment
+        read -p "Enter your email (for key comment): " key_email
+        key_email=${key_email:-"user@$(hostname)"}
+        
+        # Create .ssh directory if it doesn't exist
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        
+        # Generate the key
+        if [ "$key_algorithm" = "ed25519" ]; then
+            ssh-keygen -t ed25519 -C "$key_email" -f ~/.ssh/id_ed25519
+        else
+            ssh-keygen -t rsa -b $key_bits -C "$key_email" -f ~/.ssh/id_rsa
+        fi
+        
+        if [ $? -eq 0 ]; then
+            echo -e "\033[1;32mSSH key generated successfully!\033[0m"
+            key_exists=true
+        else
+            echo -e "\033[1;31mFailed to generate SSH key.\033[0m"
+            return 1
+        fi
+    fi
+    
+    # If key exists (either already or newly generated), offer to copy to server
+    if [ "$key_exists" = true ]; then
+        read -p "Do you want to copy the key to a remote server? (y/n): " copy_key
+        
+        if [[ "$copy_key" == "y" || "$copy_key" == "Y" ]]; then
+            # Get server details
+            read -p "Enter SSH username: " username
+            read -p "Enter SSH host: " host
+            read -p "Enter SSH port [22]: " ssh_port
+            ssh_port=${ssh_port:-22}
+            
+            # Display summary
+            echo "Summary of connection details:"
+            echo "  User: $username"
+            echo "  Host: $host"
+            echo "  SSH Port: $ssh_port"
+            
+            # Copy the key using ssh-copy-id
+            echo -e "\033[1;33mCopying SSH key to ${username}@${host}:${ssh_port}...\033[0m"
+            
+            if command -v ssh-copy-id >/dev/null 2>&1; then
+                ssh-copy-id -p $ssh_port "${username}@${host}"
+                
+                if [ $? -eq 0 ]; then
+                    echo -e "\033[1;32mSSH key copied successfully!\033[0m"
+                    echo -e "\033[1;32mYou can now connect to the server without a password.\033[0m"
+                else
+                    echo -e "\033[1;31mFailed to copy SSH key. Check your connection details and try again.\033[0m"
+                fi
+            else
+                echo -e "\033[1;31mssh-copy-id command not found. Trying alternative method...\033[0m"
+                
+                # Alternative method if ssh-copy-id is not available
+                cat ~/.ssh/id_ed25519.pub 2>/dev/null || cat ~/.ssh/id_rsa.pub 2>/dev/null | ssh -p $ssh_port "${username}@${host}" "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+                
+                if [ $? -eq 0 ]; then
+                    echo -e "\033[1;32mSSH key copied successfully!\033[0m"
+                    echo -e "\033[1;32mYou can now connect to the server without a password.\033[0m"
+                else
+                    echo -e "\033[1;31mFailed to copy SSH key. Check your connection details and try again.\033[0m"
+                fi
+            fi
+        fi
+    fi
+}
 # Function to start SSH tunnel
 start_tunnel() {
     # Default values
@@ -62,7 +162,10 @@ start_tunnel() {
 
     
     # Start the SSH tunnel with dynamic port forwarding (-D) in the background
-    ssh -f -N -D $socks_port $username@$host -p $ssh_port
+    SSH_CMD="ssh -f -N -D $socks_port -o ConnectTimeout=10 -o ServerAliveInterval=60 -o TCPKeepAlive=yes -o ConnectionAttempts=3 $username@$host -p $ssh_port 2>> ./msa_ssh_tunnel.log"
+    echo "Running command: $SSH_CMD"
+    $SSH_CMD
+
     if [ $? -eq 0 ]; then
         echo "SSH tunnel started successfully."
         echo "User: $username" > /tmp/msa_ssh_tunnel
@@ -74,7 +177,7 @@ start_tunnel() {
     fi
 
     # Get the PID of the SSH process
-    ssh_pid=$(pgrep -f "ssh -f -N -D $socks_port $username@$host -p $ssh_port")
+    ssh_pid=$(pgrep -f "$SSH_CMD")
     if [ -n "$ssh_pid" ]; then
         echo "SSH tunnel PID: $ssh_pid"
     else
@@ -109,8 +212,6 @@ manage_tunnels() {
     while IFS= read -r line; do
         pid=$(echo "$line" | awk '{print $2}')
         cmd=$(echo "$line" | awk '{for(i=11;i<=NF;i++) printf "%s ", $i}')
-    3
-        
         # Extract SOCKS port
         socks_port=$(echo "$cmd" | grep -o -E '\-D [0-9]+' | awk '{print $2}')
         if [ -z "$socks_port" ]; then
@@ -132,12 +233,12 @@ manage_tunnels() {
     
     echo ""
     echo -e "\033[1;37mOptions:\033[0m"
-    echo -e "  \033[1;31mk\033[0m - Kill a specific tunnel"
-    echo -e "  \033[1;31ma\033[0m - Kill all tunnels"
-    echo -e "  \033[1;32mq\033[0m - Quit without action"
+    echo -e "  \033[1;31mk.\033[0m Kill a specific tunnel"
+    echo -e "  \033[1;32ma.\033[0m Kill all tunnels"
+    echo -e "  \033[1;33mq.\033[0m Quit without action"
     echo ""
     
-    read -p "Enter your choice: " choice
+    read -p "Please choose an option: " choice
     
     case $choice in
         k)
@@ -145,7 +246,7 @@ manage_tunnels() {
             if [[ "$tunnel_num" =~ ^[0-9]+$ ]] && [ "$tunnel_num" -ge 1 ] && [ "$tunnel_num" -lt "$counter" ]; then
                 kill_pid=${tunnel_pids[$tunnel_num]}
                 echo -e "Terminating: \033[1;33m${tunnel_details[$tunnel_num]}\033[0m"
-                kill $kill_pid
+                sudo kill $kill_pid
                 if [ $? -eq 0 ]; then
                     echo -e "\033[1;32mTunnel with PID $kill_pid has been terminated.\033[0m"
                 else
@@ -160,7 +261,7 @@ manage_tunnels() {
             for i in $(seq 1 $((counter-1))); do
                 pid=${tunnel_pids[$i]}
                 echo -e "Terminating: \033[1;33m${tunnel_details[$i]}\033[0m"
-                kill $pid
+                sudo kill $pid
                 if [ $? -eq 0 ]; then
                     echo -e "\033[1;32mTunnel with PID $pid has been terminated.\033[0m"
                 else
@@ -177,6 +278,9 @@ manage_tunnels() {
             echo -e "\033[1;31mInvalid option.\033[0m"
             ;;
     esac
+    read -p "Press [Enter] key to continue..."
+    clear
+    display_logo
     manage_tunnels
 }
 
@@ -361,7 +465,7 @@ EOF"
             sudo cp /tmp/redsocks.conf /etc/redsocks.conf
             
             # Try to start using service command
-            sudo service redsocks start
+            sudo service redsocks start &> ./redsocks_service.log &
             if [ $? -eq 0 ]; then
             echo -e "\033[1;32mRedsocks service started successfully!\033[0m"
             
@@ -448,10 +552,10 @@ set_iptables_rules() {
     
     # Ask which traffic to redirect
     echo -e "\033[1;36mSelect traffic to redirect through the proxy:\033[0m"
-    echo -e "  \033[1;32m1)\033[0m HTTP and HTTPS traffic only (ports 80, 443)"
-    echo -e "  \033[1;32m2)\033[0m All TCP traffic (except local networks)"
-    echo -e "  \033[1;32m3)\033[0m Custom port selection"
-    read -p "Select an option (1-3): " traffic_option
+    echo -e "  \033[1;31m1.\033[0m HTTP and HTTPS traffic only (ports 80, 443)"
+    echo -e "  \033[1;32m2.\033[0m All TCP traffic (except local networks)"
+    echo -e "  \033[1;33m3.\033[0m Custom port selection"
+    read -p "Please choose an option: " traffic_option
     
     # Create REDSOCKS chain
     echo "Creating iptables REDSOCKS chain..."
@@ -615,7 +719,12 @@ check_iptables_status() {
     
     # Display the REDSOCKS chain rules
     echo -e "\033[1;36mREDSOCKS Chain Configuration:\033[0m"
-    sudo iptables -t nat -L REDSOCKS -n --line-numbers
+    sudo iptables -t nat -L REDSOCKS -n 
+    echo -e "\033[1;36mREDSOCKS related iptables OUTPUT rules:\033[0m"
+    sudo iptables -t nat -L OUTPUT -n | grep REDSOCKS
+
+
+
     
     # Check if redsocks process is running
     if pgrep redsocks >/dev/null; then
@@ -637,13 +746,13 @@ view_redsocks_logs() {
     # Options for viewing logs
     echo -e "\033[1;36mRedsocks Log Options:\033[0m"
     echo -e "\033[1;33m--------------------\033[0m"
-    echo -e "  \033[1;32m1)\033[0m View systemd journal logs (if running as a service)"
-    echo -e "  \033[1;32m2)\033[0m View standard log files"
-    echo -e "  \033[1;32m3)\033[0m View running process output"
-    echo -e "  \033[1;32m4)\033[0m Return to main menu"
+    echo -e "  \033[1;31m1.\033[0m View systemd journal logs (if running as a service)"
+    echo -e "  \033[1;32m2.\033[0m View standard log files"
+    echo -e "  \033[1;33m3.\033[0m View running process output"
+    echo -e "  \033[1;34mq.\033[0m Return to main menu"
     echo ""
     
-    read -p "Select an option (1-4): " log_option
+    read -p "Please choose an option: " log_option
     
     case $log_option in
         1)
@@ -722,7 +831,8 @@ view_redsocks_logs() {
                 echo -e "\033[1;31mNo running redsocks process found.\033[0m"
             fi
             ;;
-        4)
+        q|Q)
+            echo "Returning to main menu..."
             return 0
             ;;
         *)
@@ -731,18 +841,70 @@ view_redsocks_logs() {
     esac
 }
 
+# Function to show IP addresses
+show_ip_addresses() {
+    display_logo
+    echo -e "\033[1;36mIP Address Information\033[0m"
+    echo -e "\033[1;33m--------------------\033[0m"
+    
+    # Show hostname
+    echo -e "\033[1;34mHostname:\033[0m $(hostname)"
+    
+    # Show local IP addresses
+    echo -e "\033[1;34mLocal IP Addresses:\033[0m"
+    if command -v ip >/dev/null 2>&1; then
+        ip -4 addr show | grep inet | grep -v 127.0.0.1 | awk '{print "  - " $2}' | cut -d/ -f1
+    elif command -v hostname >/dev/null 2>&1 && hostname -I >/dev/null 2>&1; then
+        for ip in $(hostname -I); do
+            echo "  - $ip"
+        done
+    else
+        echo "  - Could not determine local IP address"
+    fi
+    
+    # Show public IP address
+    echo -e "\033[1;34mPublic IP Address:\033[0m"
+    if command -v curl >/dev/null 2>&1; then
+        public_ip=$(curl -s ifconfig.me || curl -s ipinfo.io/ip || curl -s icanhazip.com)
+        if [ -n "$public_ip" ]; then
+            echo "  - $public_ip"
+        else
+            echo "  - Could not determine public IP address"
+        fi
+    elif command -v wget >/dev/null 2>&1; then
+        public_ip=$(wget -qO- ifconfig.me || wget -qO- ipinfo.io/ip || wget -qO- icanhazip.com)
+        if [ -n "$public_ip" ]; then
+            echo "  - $public_ip"
+        else
+            echo "  - Could not determine public IP address"
+        fi
+    else
+        echo "  - Could not determine public IP address (curl or wget required)"
+    fi
+    
+    # Show if proxy is active
+    echo -e "\033[1;34mProxy Status:\033[0m"
+    if sudo iptables -t nat -L REDSOCKS -n >/dev/null 2>&1 && pgrep redsocks >/dev/null; then
+        echo -e "  - \033[1;32mProxy redirection is ACTIVE\033[0m"
+    else
+        echo -e "  - \033[1;31mProxy redirection is NOT ACTIVE\033[0m"
+    fi
+}
+
 # Function to display the menu
 display_menu() {
     display_logo
-    echo -e "  \033[1;32m1.\033[0m Start SSH Tunnel"
-    echo -e "  \033[1;31m2.\033[0m Manage SSH Tunnels"
-    echo -e "  \033[1;34m3.\033[0m Install Redsocks"
-    echo -e "  \033[1;35m4.\033[0m Configure Redsocks"
-    echo -e "  \033[1;36m5.\033[0m View Redsocks Logs"
-    echo -e "  \033[1;32m6.\033[0m Set iptables Rules"
-    echo -e "  \033[1;31m7.\033[0m Unset iptables Rules"
-    echo -e "  \033[1;36m8.\033[0m Check iptables Status"
-    echo -e "  \033[1;33m9.\033[0m Exit"
+    echo -e "  \033[1;34m1.\033[0m Install Redsocks"
+    echo -e "  \033[1;33m2.\033[0m Generate/Copy SSH Key"
+    echo -e "  \033[1;32m3.\033[0m Start SSH Tunnel"
+    echo -e "  \033[1;31m4.\033[0m Manage SSH Tunnels"
+    echo -e "  \033[1;35m5.\033[0m Configure Redsocks"
+    echo -e "  \033[1;36m6.\033[0m View Redsocks Logs"
+    echo -e "  \033[1;32m7.\033[0m Set iptables Rules"
+    echo -e "  \033[1;31m8.\033[0m Unset iptables Rules"
+    echo -e "  \033[1;36m9.\033[0m Check iptables Status"
+    echo -e "  \033[1;34m10.\033[0m Show IP Addresses"
+    echo -e "  \033[1;33mq.\033[0m Exit"
     echo ""
     echo -e "  \033[1;37m--------------------------------\033[0m"
 }
@@ -756,30 +918,101 @@ while true; do
     display_logo
     case $choice in
         1)
-            start_tunnel
-            ;;
-        2)
-            manage_tunnels
-            ;;
-        3)
             install_redsocks
             ;;
+        2)
+            generate_ssh_key
+            ;;
+        3)
+            start_tunnel
+            ;;
         4)
-            configure_redsocks
+            manage_tunnels
             ;;
         5)
-            view_redsocks_logs
+            configure_redsocks
             ;;
         6)
-            set_iptables_rules
+            view_redsocks_logs
             ;;
         7)
-            unset_iptables_rules
+            set_iptables_rules
             ;;
         8)
-            check_iptables_status
+            unset_iptables_rules
             ;;
         9)
+            check_iptables_status
+            ;;
+        10)
+            show_ip_addresses
+            ;;
+        q|Q)
+            clear
+            echo -e "\033[1;32mThank you for using MSA SSH Tunnel Manager!\033[0m"
+            echo -e "\033[1;36mHave a great day!\033[0m"
+            echo -e "\033[1;33m================================\033[0m"
+            exit 0
+            ;;
+        *)
+            echo "Invalid option, please try again."
+            ;;
+    esac
+    read -p "Press [Enter] key to continue..."
+done
+# Function to display the menu
+display_menu() {
+    display_logo
+    echo -e "  \033[1;34m1.\033[0m Install Redsocks"
+    echo -e "  \033[1;33m2.\033[0m Generate/Copy SSH Key"
+    echo -e "  \033[1;32m3.\033[0m Start SSH Tunnel"
+    echo -e "  \033[1;31m4.\033[0m Manage SSH Tunnels"
+    echo -e "  \033[1;35m5.\033[0m Configure Redsocks"
+    echo -e "  \033[1;36m6.\033[0m View Redsocks Logs"
+    echo -e "  \033[1;32m7.\033[0m Set iptables Rules"
+    echo -e "  \033[1;31m8.\033[0m Unset iptables Rules"
+    echo -e "  \033[1;36m9.\033[0m Check iptables Status"
+    echo -e "  \033[1;33mq.\033[0m Exit"
+    echo ""
+    echo -e "  \033[1;37m--------------------------------\033[0m"
+}
+
+# Main loop
+while true; do
+    clear
+    display_menu
+    read -p "Please choose an option: " choice
+    clear
+    display_logo
+    case $choice in
+        1)
+            install_redsocks
+            ;;
+        2)
+            generate_ssh_key
+            ;;
+        3)
+            start_tunnel
+            ;;
+        4)
+            manage_tunnels
+            ;;
+        5)
+            configure_redsocks
+            ;;
+        6)
+            view_redsocks_logs
+            ;;
+        7)
+            set_iptables_rules
+            ;;
+        8)
+            unset_iptables_rules
+            ;;
+        9)
+            check_iptables_status
+            ;;
+        q|Q)
             clear
             echo -e "\033[1;32mThank you for using MSA SSH Tunnel Manager!\033[0m"
             echo -e "\033[1;36mHave a great day!\033[0m"
