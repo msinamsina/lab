@@ -365,7 +365,7 @@ EOF"
             sudo cp /tmp/redsocks.conf /etc/redsocks.conf
             
             # Try to start using service command
-            sudo service redsocks start
+            sudo service redsocks start &> ./redsocks_service.log &
             if [ $? -eq 0 ]; then
             echo -e "\033[1;32mRedsocks service started successfully!\033[0m"
             
