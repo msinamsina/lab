@@ -175,4 +175,7 @@ cython_debug/
 
 # Terraform variables
 **/*.tfvars
+**.terraform.lock.hcl
+**terraform.tfstate
+**.terraform
 !**/example.credentials.auto.tfvars
