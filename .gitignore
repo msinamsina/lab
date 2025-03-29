@@ -172,3 +172,7 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Terraform variables
+**/*.tfvars
+!**/example.credentials.auto.tfvars
