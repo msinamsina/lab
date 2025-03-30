@@ -852,14 +852,14 @@ show_ip_addresses() {
     # Show public IP address
     echo -e "\033[1;34mPublic IP Address:\033[0m"
     if command -v curl >/dev/null 2>&1; then
-        public_ip=$(curl -s ifconfig.me || curl -s ipinfo.io/ip || curl -s icanhazip.com)
+        public_ip=$(curl -s icanhazip.com || curl -s api.ipify.org)
         if [ -n "$public_ip" ]; then
             echo "  - $public_ip"
         else
             echo "  - Could not determine public IP address"
         fi
     elif command -v wget >/dev/null 2>&1; then
-        public_ip=$(wget -qO- ifconfig.me || wget -qO- ipinfo.io/ip || wget -qO- icanhazip.com)
+        public_ip=$(wget -qO- icanhazip.com || wget -qO- api.ipify.org)
         if [ -n "$public_ip" ]; then
             echo "  - $public_ip"
         else
