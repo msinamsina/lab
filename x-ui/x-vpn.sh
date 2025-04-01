@@ -331,7 +331,6 @@ case "$COMMAND" in
     ;;
   *)
     echo "Usage: $0 {start|stop|restart|status} [-l|--link VLESS_LINK]"
-    echo "Example: $0 start -l 'vless://d76e9568-63fb-42aa-8f69-4a3832e62fee@147.93.121.57:8282?type=tcp&security=reality&pbk=_HP-BSnUybSsr1MkjwHUni706EVfHjq6_Ts06aJKyG0&fp=chrome&sni=expat.com&sid=9565b91ab8f7&spx=%2F#www-fe7lq5pe'"
     exit 1
     ;;
 esac
