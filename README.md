@@ -22,3 +22,9 @@ docker compose up -d
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/msinamsina/lab/main/ssh_tunnel/sshtun.sh)"
 ```
+
+## Using x-vpn
+```bahs
+wget https://raw.githubusercontent.com/msinamsina/lab/refs/heads/main/x-ui/x-vpn.sh
+bash ./x-vpn.sh start -l <vless link>
+```
